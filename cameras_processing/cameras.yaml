@@ -1,0 +1,232 @@
+# ------------------------------------------------------------------------------
+# Файл cameras.yaml
+#
+# Назначение:
+#   Описывает все видеокамеры, которые может обрабатывать система.
+#   Файл редактирует администратор. По этому файлу скрипт sync_cameras_from_yaml.py
+#   инициализирует/обновляет таблицу video_sources в БД.
+#
+# Общая структура:
+#
+# cameras:
+#   - id: <строковый_идентификатор_камеры>
+#     name: <человекочитаемое_название_камеры>
+#     connection_type: <тип_подключения>
+#     ...поля подключения...
+#     location: <описание_места_установки>
+#     enabled: true|false
+#
+#     detection_logic:
+#       helmet_vest_match_iou_threshold: <float 0..1>
+#       helmet_confidence_threshold: <float 0..1>
+#       vest_confidence_threshold: <float 0..1>
+#       person_confidence_threshold: <float 0..1>
+#       person_min_area: <int, пиксели>
+#
+#     video_processing:
+#       target_fps: <float, кадров/сек>
+#       max_width: <int, пиксели>
+#
+#     stability:
+#       window_size_n: <int, размер окна по кадрам>
+#       violation_ratio_t: <float 0..1, доля кадров с нарушением>
+#       min_window_for_violation: <int, мин. длина истории по человеку>
+#
+#     tracking:
+#       iou_threshold: <float 0..1, порог IoU для трекинга между кадрами>
+#       max_track_lost_frames: <int, макс. число кадров без обновления трека>
+#
+#     stream:
+#       max_run_duration_sec: <float, длительность одной сессии обработки в секундах>
+#
+# ------------------------------------------------------------------------------
+# Поля верхнего уровня каждой камеры
+#
+#   id               (обяз.)  Строковый идентификатор камеры.
+#                              Используется как внешний ключ (external_id) в БД.
+#                              Должен быть уникальным в пределах файла.
+#
+#   name             (обяз.)  Название камеры для отображения пользователю.
+#
+#   connection_type  (обяз.)  Тип подключения камеры. Поддерживаемые значения:
+#                               - "rtsp"       : IP-камера с RTSP-потоком.
+#                               - "http_mjpeg": IP-камера с HTTP MJPEG-потоком
+#                               - "file"      : виртуальная "камера" в виде файла.
+#
+#   Параметры подключения зависят от connection_type:
+#
+#     connection_type: "rtsp"
+#       url: "rtsp://user:pass@IP:554/путь"    (обяз.)
+#
+#     connection_type: "http_mjpeg"
+#       url: "http://user:pass@IP:порт/путь"  (обяз.)
+#
+#     connection_type: "file"
+#       path: "C:/path/to/video.mp4"          (обяз.)
+#
+#     connection_type: "device"
+#       device_index: 0                       (обяз.)
+#         Индекс локальной камеры для OpenCV (cv2.VideoCapture(0)).
+#         В БД индекс также дублируется в camera_url и в camera_params.device.index.
+#
+#   location         (опц.)   Описание места установки камеры (этаж, зона, участок).
+#
+#   enabled          (опц.)   Флаг, будет ли камера использоваться системой.
+#                             По умолчанию считается true.
+#                             В БД синхронизируется с video_sources.is_active.
+#
+# ------------------------------------------------------------------------------
+# Блок detection_logic (опционально, можно задавать частично)
+#
+#   Переопределяет глобальные параметры из config.yaml для конкретной камеры.
+#   Если какое-то поле не указано, берётся значение из глобального конфига.
+#
+#   helmet_vest_match_iou_threshold (float 0..1)
+#     Порог IoU для "привязки" каски/жилета к человеку.
+#     Если пересечение bbox каски/жилета и bbox человека >= этого порога,
+#     считаем, что данная каска/жилет принадлежат этому человеку.
+#
+#   helmet_confidence_threshold (float 0..1)
+#     Порог уверенности для детекции касок.
+#
+#   vest_confidence_threshold (float 0..1)
+#     Порог уверенности для детекции жилетов.
+#
+#   person_confidence_threshold (float 0..1)
+#     Порог уверенности для детекции людей.
+#
+#   person_min_area (int, пиксели)
+#     Минимальная площадь bbox человека. Позволяет отфильтровать
+#     очень маленькие детекции (далёкие люди/шум).
+#
+# ------------------------------------------------------------------------------
+# Блок video_processing (опционально)
+#
+#   target_fps (float)
+#     Целевая частота анализа кадров (кадров/секунда).
+#     Например, 1.0 ⇒ анализ ~1 кадра в секунду видеопотока.
+#     Используется для вычисления шага кадров (frame_step) в анализе.
+#
+#   max_width (int, пиксели)
+#     Максимальная ширина кадра перед анализом.
+#     Если фактическая ширина больше, кадр пропорционально уменьшается.
+#     Снижает нагрузку на процессор/видеокарту.
+#
+# ------------------------------------------------------------------------------
+# Блок stability (опционально)
+#
+#   window_size_n (int)
+#     Размер окна по кадрам для расчёта устойчивого нарушения.
+#
+#   violation_ratio_t (float 0..1)
+#     Порог доли кадров с нарушениями в окне.
+#     Например, 0.6 ⇒ нарушение считается устойчивым,
+#     если в окне ≥60% кадров с нарушениями.
+#
+#   min_window_for_violation (int)
+#     Минимальное количество кадров в истории конкретного человека,
+#     при котором вообще можно фиксировать устойчивое нарушение.
+#
+# ------------------------------------------------------------------------------
+# Блок tracking (опционально)
+#
+#   iou_threshold (float 0..1)
+#     Порог IoU для сопоставления людей между кадрами.
+#     Чем выше, тем строже условие "это тот же человек".
+#
+#   max_track_lost_frames (int)
+#     Максимальное число анализируемых кадров, в течение которых трек
+#     может не обновляться (человек пропал), прежде чем будет удалён.
+#
+# ------------------------------------------------------------------------------
+# Блок stream (опционально)
+#
+#   max_run_duration_sec (float)
+#     Максимальная длительность одной сессии обработки (run) для этой камеры.
+#     По истечении этого времени воркер завершает текущий run и при необходимости
+#     создаёт новый. Это удобно для разбиения потока на смены/часы.
+#
+# ------------------------------------------------------------------------------
+# Пример камеры с RTSP-подключением:
+#
+# cameras:
+#   - id: cam1
+#     name: "Камера на входе"
+#     connection_type: "rtsp"
+#     url: "rtsp://user:pass@192.168.0.10:554/Streaming/Channels/101"
+#     location: "Вход на стройку"
+#     enabled: true
+#
+#     detection_logic:
+#       helmet_vest_match_iou_threshold: 0.3
+#       helmet_confidence_threshold: 0.7
+#       vest_confidence_threshold: 0.5
+#       person_confidence_threshold: 0.4
+#       person_min_area: 500
+#
+#     video_processing:
+#       target_fps: 2.0
+#       max_width: 1024
+#
+#     stability:
+#       window_size_n: 10
+#       violation_ratio_t: 0.6
+#       min_window_for_violation: 3
+#
+#     tracking:
+#       iou_threshold: 0.3
+#       max_track_lost_frames: 50
+#
+#     stream:
+#       max_run_duration_sec: 3600
+#
+# Пример локальной веб-камеры ноутбука:
+#
+# cameras:
+#   - id: laptop_cam
+#     name: "Веб-камера ноутбука"
+#     connection_type: "device"
+#     device_index: 0
+#     location: "Локальный ноутбук"
+#     enabled: true
+#
+#     video_processing:
+#       target_fps: 2.0
+#       max_width: 640
+#
+#     stream:
+#       max_run_duration_sec: 600
+# ------------------------------------------------------------------------------
+
+cameras:
+  # здесь идут реальные описания камер, которые администратор добавляет/редактирует вручную.
+
+  - id: laptop_cam
+    name: "Веб-камера через rtsp-поток"
+    connection_type: "rtsp"
+    url: "rtsp://rtsp_server:8554/cam1"
+    location: "Локальный ноутбук"
+    enabled: true
+
+    detection_logic:
+      helmet_vest_match_iou_threshold: 0.3
+      helmet_confidence_threshold: 0.7
+      vest_confidence_threshold: 0.5
+      person_confidence_threshold: 0.4
+      person_min_area: 500
+
+    video_processing:
+      target_fps: 2.0
+      max_width: 1024
+
+    stability:
+      window_size_n: 10
+      violation_ratio_t: 0.6
+      min_window_for_violation: 3
+
+    tracking:
+      iou_threshold: 0.3
+      max_track_lost_frames: 50
+
+    stream:
+      max_run_duration_sec: 3600

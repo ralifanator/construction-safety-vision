@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: csafety_db
+    restart: always
+    environment:
+      POSTGRES_DB: tb_control
+      POSTGRES_USER: tb_user
+      POSTGRES_PASSWORD: tb_password
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # init.sql выполнится автоматически при первом старте
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+  
+  rtsp_server:
+    image: bluenviron/mediamtx:latest
+    container_name: csafety_rtsp
+    restart: always
+    volumes:
+    - ./mediamtx.yml:/mediamtx.yml:ro
+  # Достаточно одного аргумента - путь к конфигу
+    ports:
+    - "8554:8554"   # RTSP
+    - "1935:1935"   # RTMP (OBS)
+
+  backend:
+    build: .
+    container_name: csafety_backend
+    restart: always
+    environment:
+      CMD_MODE: "server"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_NAME: "tb_control"
+      DB_USER: "tb_user"
+      DB_PASSWORD: "tb_password"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./cameras_processing/cameras.yaml:/app/cameras_processing/cameras.yaml:ro
+      - ./last_frames:/app/last_frames
+      - ./violations_frames:/app/violations_frames
+      - ./uploads:/app/uploads
+      - ./static:/app/static
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - rtsp_server
+
+  workers_manager:
+    build: .
+    container_name: csafety_workers_manager
+    restart: always
+    environment:
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_NAME: "tb_control"
+      DB_USER: "tb_user"
+      DB_PASSWORD: "tb_password"
+      # STREAM_WORKERS: "4"  # можно задать явно при желании
+    command: ["python", "cameras_processing/run_stream_workers.py"]
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./cameras_processing/cameras.yaml:/app/cameras_processing/cameras.yaml:ro
+      - ./last_frames:/app/last_frames
+      - ./violations_frames:/app/violations_frames
+      - ./uploads:/app/uploads
+    depends_on:
+      - db
+      - rtsp_server
+
+volumes:
+  db_data:

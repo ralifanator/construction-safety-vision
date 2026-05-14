@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+psycopg2-binary
+PyYAML
+opencv-python
+numpy
+ultralytics
+python-multipart
+pydantic
+torch

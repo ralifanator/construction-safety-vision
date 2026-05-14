@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Система контроля ТБ по видеопотоку</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        .layout {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Левая панель инструментов */
+        .sidebar {
+            width: 220px;
+            background-color: #2f3542;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .sidebar h2 {
+            font-size: 18px;
+            margin: 10px 0 20px;
+            text-align: center;
+        }
+
+        .tool-button {
+            background: none;
+            border: none;
+            color: #dfe4ea;
+            text-align: left;
+            padding: 10px 12px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .tool-button:hover {
+            background-color: #57606f;
+        }
+
+        .tool-button.active {
+            background-color: #3742fa;
+            color: #fff;
+        }
+
+        /* Центральная область содержимого */
+        .content {
+            flex: 1;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        h1,
+        h2,
+        h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .section {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .button {
+            padding: 8px 16px;
+            margin: 8px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #2f3542;
+            background-color: #2f3542;
+            color: #fff;
+        }
+
+        .button:hover {
+            background-color: #57606f;
+        }
+
+        #status {
+            margin-top: 10px;
+            color: #333;
+        }
+
+        #status.error {
+            color: #b00000;
+        }
+
+        #status.success {
+            color: #008000;
+        }
+
+        #results .item {
+            margin-bottom: 25px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+
+        #results img {
+            max-width: 700px;
+            display: block;
+            margin-bottom: 5px;
+            border: 1px solid #aaa;
+        }
+
+        pre {
+            background: #f7f7f7;
+            padding: 8px;
+            overflow-x: auto;
+            max-height: 200px;
+            font-size: 12px;
+        }
+
+        .placeholder {
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="layout">
+        <!-- Левая панель инструментов -->
+        <div class="sidebar">
+            <h2>Система обнаружения нарушений ТБ</h2>
+            <button class="tool-button active" id="toolImagesBtn">
+                Обработка изображений
+            </button>
+            <button class="tool-button" id="toolVideoBtn">
+                Обработка видео
+            </button>
+            <button class="tool-button" id="toolCameraBtn">
+                Чтение с камеры (позже)
+            </button>
+        </div>
+
+        <!-- Центральная область содержимого -->
+        <div class="content">
+            <h1>Система контроля техники безопасности</h1>
+
+            <!-- Блок для обработки изображений -->
+            <div id="toolImages" class="section">
+                <h2>Обработка изображений</h2>
+                <p>
+                    Выберите одно или несколько изображений на своём устройстве.
+                    Сервер выполнит детекцию людей, касок и жилетов и вернёт
+                    разметку (цветные прямоугольники и подписи), а также JSON с результатами.
+                </p>
+
+                <input type="file" id="imageInput" accept="image/*" multiple>
+
+                <div>
+                    <h3>Настройки обработки изображений</h3>
+                    <label>
+                        Порог уверенности каски:
+                        <input type="number" id="imgHelmetThr" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Порог уверенности жилета:
+                        <input type="number" id="imgVestThr" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Порог уверенности человека:
+                        <input type="number" id="imgPersonThr" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Минимальная площадь человека (px²):
+                        <input type="number" id="imgPersonMinArea" step="100" min="0">
+                    </label>
+                </div>
+
+                <br>
+                <button class="button" id="sendImagesButton">Отправить на обработку</button>
+
+                <div id="status"></div>
+
+                <h3>Результаты обработки</h3>
+                <div id="results"></div>
+            </div>
+
+            <div id="toolVideo" class="section" style="display:none;">
+                <h2>Обработка видео</h2>
+                <p>
+                    Загрузите видеофайл. Сервер выполнит покадровый анализ с пониженной частотой
+                    (например, 1 кадр в секунду) и вернёт список кадров с зафиксированными нарушениями.
+                </p>
+
+                <input type="file" id="videoInput" accept="video/*" multiple>
+
+                <div>
+                    <h3>Настройки обработки видео</h3>
+                    <label>
+                        Целевая частота обработки (кадров/сек):
+                        <input type="number" id="vidTargetFps" step="0.5" min="0.5" max="30">
+                    </label><br>
+                    <label>
+                        Порог уверенности каски:
+                        <input type="number" id="vidHelmetThr" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Порог уверенности жилета:
+                        <input type="number" id="vidVestThr" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Порог уверенности человека:
+                        <input type="number" id="vidPersonThr" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Размер окна устойчивости (кадров):
+                        <input type="number" id="vidWindowSize" step="1" min="1">
+                    </label><br>
+                    <label>
+                        Порог доли нарушений в окне:
+                        <input type="number" id="vidViolationRatio" step="0.05" min="0" max="1">
+                    </label><br>
+                    <label>
+                        Минимум кадров с нарушением в окне:
+                        <input type="number" id="vidMinWindowForViolation" step="1" min="1">
+                    </label><br>
+                    <label>
+                        Максимальная ширина кадра (px, 0 — без сжатия):
+                        <input type="number" id="vidMaxWidth" step="10" min="0">
+                    </label>
+                </div>
+
+                <br>
+                <button class="button" id="sendVideoButton">Отправить на анализ</button>
+
+                <div id="videoStatus"></div>
+
+                <h3>Результаты анализа видео</h3>
+                <div id="videoResults"></div>
+
+                <h3>Просмотр размеченного видео</h3>
+                <div id="videoPlayerContainer"></div>
+            </div>
+
+            <!-- Блок работы с камерами -->
+            <div id="toolCamera" class="section" style="display:none;">
+                <h2>Работа с видеокамерами</h2>
+                <p>
+                    Здесь можно просматривать текущие обработанные кадры с камер,
+                    список активных камер и формировать отчёты по нарушениям за период.
+                </p>
+
+                <!-- Внутреннее мини-меню блока "Чтение с камеры" -->
+                <div style="margin-bottom: 10px;">
+                    <button class="button" id="camViewLiveBtn">Текущие кадры</button>
+                    <button class="button" id="camViewListBtn">Активные камеры</button>
+                    <button class="button" id="camReportsBtn">Отчёты по нарушениям</button>
+                </div>
+
+                <!-- Секция: просмотр текущих обработанных кадров с камер -->
+                <div id="camLiveSection" class="section">
+                    <h3>Текущие обработанные кадры с камер</h3>
+                    <p>
+                        Выберите камеру, чтобы видеть последние обработанные кадры
+                        (с уже нанесёнными прямоугольниками и статусами).
+                    </p>
+
+                    <label>
+                        Камера:
+                        <select id="camLiveSelect">
+                            <!-- сюда подставим список камер из API -->
+                        </select>
+                    </label>
+
+                    <div style="margin-top: 10px;">
+                        <img id="camLiveImage" src="" alt="Обработанный кадр"
+                            style="max-width: 700px; display: none; border:1px solid #aaa;">
+                    </div>
+
+                    <p id="camLiveStatus" class="placeholder"></p>
+                </div>
+
+                <!-- Секция: просмотр активных камер -->
+                <div id="camListSection" class="section" style="display:none;">
+                    <h3>Список камер</h3>
+                    <p>
+                        Здесь отображаются все камеры, настроенные администратором (файл cameras.yaml),
+                        с их основными параметрами и статусом включения.
+                    </p>
+
+                    <div id="camListContainer" class="placeholder">
+                        Загрузка списка камер...
+                    </div>
+                </div>
+
+                <!-- Секция: формирование отчётов по нарушениям -->
+                <div id="camReportsSection" class="section" style="margin-top: 10px;">
+                    <h3>Отчёты по нарушениям с камер</h3>
+                    <p>
+                        Выберите камеру и период (по дате/времени фиксации нарушения, поле created_at),
+                        чтобы получить список зафиксированных нарушений с кадрами.
+                    </p>
+
+                    <div style="margin-bottom: 10px;">
+                        <label>
+                            Камера:
+                            <select id="camReportSelect">
+                                <!-- сюда подставим камеры через /api/cameras -->
+                            </select>
+                        </label>
+                        <br>
+                        <label>
+                            Начало периода:
+                            <input type="datetime-local" id="camReportFrom">
+                        </label>
+                        <br>
+                        <label>
+                            Конец периода:
+                            <input type="datetime-local" id="camReportTo">
+                        </label>
+                        <br>
+                        <button class="button" id="camReportLoadBtn">Показать отчёт</button>
+                    </div>
+
+                    <div id="camReportResults">
+                        <!-- здесь будет список нарушений -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Элементы левой панели
+        const toolImagesBtn = document.getElementById('toolImagesBtn');
+        const toolVideoBtn = document.getElementById('toolVideoBtn');
+        const toolCameraBtn = document.getElementById('toolCameraBtn');
+
+        // Блоки содержимого
+        const toolImages = document.getElementById('toolImages');
+        const toolVideo = document.getElementById('toolVideo');
+        const toolCamera = document.getElementById('toolCamera');
+
+        // Элементы внутри блока обработки изображений
+        const imageInput = document.getElementById('imageInput');
+        const sendImagesButton = document.getElementById('sendImagesButton');
+        const statusDiv = document.getElementById('status');
+        const resultsDiv = document.getElementById('results');
+
+        // Функция переключения активного инструмента
+        function setActiveTool(tool) {
+            [toolImagesBtn, toolVideoBtn, toolCameraBtn].forEach(btn => {
+                btn.classList.remove('active');
+            });
+            toolImages.style.display = 'none';
+            toolVideo.style.display = 'none';
+            toolCamera.style.display = 'none';
+
+            if (tool === 'images') {
+                toolImagesBtn.classList.add('active');
+                toolImages.style.display = 'block';
+            } else if (tool === 'video') {
+                toolVideoBtn.classList.add('active');
+                toolVideo.style.display = 'block';
+            } else if (tool === 'camera') {
+                toolCameraBtn.classList.add('active');
+                toolCamera.style.display = 'block';
+            }
+        }
+
+        async function loadConfigDefaults() {
+            try {
+                const resp = await fetch('http://localhost:8000/api/config_defaults');
+                if (!resp.ok) {
+                    console.warn('Не удалось получить config_defaults:', resp.status);
+                    return;
+                }
+                const data = await resp.json();
+
+                const imgHelmetEl = document.getElementById('imgHelmetThr');
+                const imgVestEl = document.getElementById('imgVestThr');
+                const imgPersonEl = document.getElementById('imgPersonThr');
+                const imgAreaEl = document.getElementById('imgPersonMinArea');
+
+                const vidTargetFpsEl = document.getElementById('vidTargetFps');
+                const vidHelmetEl = document.getElementById('vidHelmetThr');
+                const vidVestEl = document.getElementById('vidVestThr');
+                const vidPersonEl = document.getElementById('vidPersonThr');
+                const vidWindowSizeEl = document.getElementById('vidWindowSize');
+                const vidViolationRatioEl = document.getElementById('vidViolationRatio');
+                const vidMinWindowForViolationEl = document.getElementById('vidMinWindowForViolation');
+                const vidMaxWidthEl = document.getElementById('vidMaxWidth');
+
+                if (data.image) {
+                    if (imgHelmetEl) imgHelmetEl.value = data.image.helmet_confidence_threshold;
+                    if (imgVestEl) imgVestEl.value = data.image.vest_confidence_threshold;
+                    if (imgPersonEl) imgPersonEl.value = data.image.person_confidence_threshold;
+                    if (imgAreaEl) imgAreaEl.value = data.image.person_min_area;
+                }
+
+                if (data.video) {
+                    if (vidTargetFpsEl) vidTargetFpsEl.value = data.video.target_fps;
+                    if (vidHelmetEl) vidHelmetEl.value = data.video.helmet_confidence_threshold;
+                    if (vidVestEl) vidVestEl.value = data.video.vest_confidence_threshold;
+                    if (vidPersonEl) vidPersonEl.value = data.video.person_confidence_threshold;
+                    if (vidWindowSizeEl) vidWindowSizeEl.value = data.video.window_size_n;
+                    if (vidMinWindowForViolationEl) vidMinWindowForViolationEl.value = data.video.min_window_for_violation;
+                    if (vidMaxWidthEl) vidMaxWidthEl.value = data.video.max_width;
+                    if (vidViolationRatioEl) vidViolationRatioEl.value = data.video.violation_ratio_t;
+                }
+
+                console.log('config_defaults загружен', data);
+            } catch (e) {
+                console.warn('Ошибка загрузки config_defaults:', e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfigDefaults();
+            setActiveTool('images');
+        });
+
+        loadConfigDefaults();
+
+        toolImagesBtn.addEventListener('click', () => setActiveTool('images'));
+        toolVideoBtn.addEventListener('click', () => setActiveTool('video'));
+        toolCameraBtn.addEventListener('click', () => setActiveTool('camera'));
+
+        // Отправка изображений на сервер (фоновой анализ с опросом статуса)
+        sendImagesButton.addEventListener('click', async () => {
+            const files = imageInput.files;
+            if (!files || files.length === 0) {
+                alert('Выберите хотя бы одно изображение');
+                return;
+            }
+
+            statusDiv.textContent = 'Постановка задач на обработку изображений...';
+            statusDiv.className = '';
+            resultsDiv.innerHTML = '';
+
+            // Читаем настройки
+            const imgHelmetThr = parseFloat(document.getElementById('imgHelmetThr').value);
+            const imgVestThr = parseFloat(document.getElementById('imgVestThr').value);
+            const imgPersonThr = parseFloat(document.getElementById('imgPersonThr').value);
+            const imgPersonMinArea = parseInt(document.getElementById('imgPersonMinArea').value, 10);
+
+            const imgParams = {
+                helmet_confidence_threshold: imgHelmetThr,
+                vest_confidence_threshold: imgVestThr,
+                person_confidence_threshold: imgPersonThr,
+                person_min_area: imgPersonMinArea
+            };
+
+            // Создаём блок для статусов по каждому файлу
+            const listDiv = document.createElement('div');
+            resultsDiv.appendChild(listDiv);
+
+            for (const file of files) {
+                const row = document.createElement('div');
+                row.id = 'file-status-' + file.name;
+                row.textContent = `${file.name}: подготовка...`;
+                listDiv.appendChild(row);
+
+                const formData = new FormData();
+                formData.append('files', file);
+                formData.append('params', JSON.stringify(imgParams));
+
+                (async () => {
+                    try {
+                        // Шаг 1. Старт фонового анализа
+                        const startResp = await fetch('http://localhost:8000/api/image/start_analyze', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!startResp.ok) {
+                            const text = await startResp.text();
+                            row.textContent = `${file.name}: ошибка старта анализа (${startResp.status} ${text})`;
+                            return;
+                        }
+
+                        const startData = await startResp.json();
+                        const runId = startData.results[0].run_id;
+                        row.textContent = `${file.name}: задача поставлена (run ${runId}), статус: queued`;
+
+                        // Шаг 2. Периодически опрашиваем /api/image/status/{run_id}
+                        const pollIntervalMs = 1000;
+
+                        const intervalId = setInterval(async () => {
+                            try {
+                                const stResp = await fetch(`http://localhost:8000/api/image/status/${runId}`);
+                                if (!stResp.ok) {
+                                    row.textContent = `${file.name}: ошибка получения статуса (${stResp.status})`;
+                                    clearInterval(intervalId);
+                                    return;
+                                }
+
+                                const st = await stResp.json();
+
+                                if (st.status === 'processing') {
+                                    row.textContent = `${file.name}: статус processing...`;
+                                } else if (st.status === 'queued') {
+                                    row.textContent = `${file.name}: статус queued`;
+                                } else if (st.status === 'done') {
+                                    row.textContent = `${file.name}: обработка завершена.`;
+                                    clearInterval(intervalId);
+
+                                    // === Запрашиваем детальный результат ===
+                                    try {
+                                        const respRes = await fetch(`http://localhost:8000/api/image/result/${runId}`);
+                                        if (!respRes.ok) {
+                                            console.warn('Ошибка получения результата для', file.name, respRes.status);
+                                            return;
+                                        }
+                                        const dataRes = await respRes.json();
+                                        const res = dataRes.result;
+
+                                        const block = document.createElement('div');
+                                        block.className = 'item';
+
+                                        const title = document.createElement('h3');
+                                        title.textContent = res.filename || `Изображение run ${res.runid}`;
+                                        block.appendChild(title);
+
+                                        // Показываем размеченное изображение
+                                        if (res.annotated_image_url) {
+                                            const img = document.createElement('img');
+                                            img.src = 'http://localhost:8000' + res.annotated_image_url;
+                                            img.style.maxWidth = '700px';
+                                            img.style.display = 'block';
+                                            img.style.marginBottom = '10px';
+                                            block.appendChild(img);
+                                        }
+
+                                        // Показываем JSON результат
+                                        const analysis = res.analysis || {};
+                                        const detections = analysis.detections || [];
+                                        //const summary = document.createElement('div');
+                                        //summary.innerHTML = `
+                                        //    <b>Всего обнаружено:</b> ${detections.length}<br>
+                                        //    <b>С каской:</b> ${(analysis.helmet_count || 0)}<br>
+                                        //    <b>С жилетом:</b> ${(analysis.vest_count || 0)}<br>
+                                        //    <b>Без защиты:</b> ${(analysis.no_ppe_count || 0)}<br>
+                                        //     <b>Время обработки:</b> ${(res.processing_time_sec || 0).toFixed(2)} сек.
+                                        //`;
+                                        //block.appendChild(summary);
+
+                                        // Показываем детальные обнаружения
+                                        if (detections.length > 0) {
+                                            const detHeader = document.createElement('h4');
+                                            detHeader.textContent = 'Обнаружения:';
+                                            block.appendChild(detHeader);
+
+                                            for (const det of detections) {
+                                                const detBlock = document.createElement('div');
+                                                detBlock.style.marginBottom = '10px';
+                                                detBlock.style.borderBottom = '1px solid #eee';
+                                                detBlock.style.paddingBottom = '8px';
+
+                                                const detTitle = document.createElement('div');
+                                                detTitle.textContent =
+                                                    `Класс: ${det.class}, уверенность: ${(det.confidence * 100).toFixed(1)}%, ` +
+                                                    `x: ${det.x}, y: ${det.y}, w: ${det.w}, h: ${det.h}`;
+                                                detBlock.appendChild(detTitle);
+
+                                                block.appendChild(detBlock);
+                                            }
+                                        }
+
+                                        resultsDiv.appendChild(block);
+
+                                    } catch (e) {
+                                        console.warn('Ошибка запроса результата для', file.name, e);
+                                    }
+                                } else if (st.status === 'error') {
+                                    row.textContent = `${file.name}: ошибка обработки: ${st.error_message || ''}`;
+                                    clearInterval(intervalId);
+                                }
+                            } catch (e) {
+                                row.textContent = `${file.name}: ошибка статуса ${e}`;
+                                clearInterval(intervalId);
+                            }
+                        }, pollIntervalMs);
+                    } catch (err) {
+                        row.textContent = `${file.name}: ошибка запуска анализа ${err}`;
+                    }
+                })();
+            }
+
+            statusDiv.textContent = 'Задачи на обработку изображений отправлены. Всего файлов: ' + files.length;
+            statusDiv.className = 'success';
+        });
+
+        // Элементы для обработки видео
+        const videoInput = document.getElementById('videoInput');
+        const sendVideoButton = document.getElementById('sendVideoButton');
+        const videoStatusDiv = document.getElementById('videoStatus');
+        const videoResultsDiv = document.getElementById('videoResults');
+        const videoPlayerContainer = document.getElementById('videoPlayerContainer');
+
+        // Отправка одного или нескольких видео на сервер (фоновой анализ)
+        sendVideoButton.addEventListener('click', async () => {
+            const files = videoInput.files;
+            if (!files || files.length === 0) {
+                alert('Выберите хотя бы один видеофайл');
+                return;
+            }
+
+            videoStatusDiv.textContent = 'Постановка задач на анализ видео...';
+            videoStatusDiv.className = '';
+            videoResultsDiv.innerHTML = '';
+            videoPlayerContainer.innerHTML = '';
+
+            // Читаем настройки видео из полей
+            const vidTargetFps = parseFloat(document.getElementById('vidTargetFps').value);
+            const vidHelmetThr = parseFloat(document.getElementById('vidHelmetThr').value);
+            const vidVestThr = parseFloat(document.getElementById('vidVestThr').value);
+            const vidPersonThr = parseFloat(document.getElementById('vidPersonThr').value);
+            const vidWindowSize = parseInt(document.getElementById('vidWindowSize').value, 10);
+            const vidViolationRatio = parseFloat(document.getElementById('vidViolationRatio').value);
+            const vidMinWindowForViolation = parseInt(document.getElementById('vidMinWindowForViolation').value, 10);
+            const vidMaxWidth = parseInt(document.getElementById('vidMaxWidth').value, 10);
+
+            const videoParams = {
+                target_fps: vidTargetFps,
+                max_width: vidMaxWidth,
+                detection_logic: {
+                    helmet_confidence_threshold: vidHelmetThr,
+                    vest_confidence_threshold: vidVestThr,
+                    person_confidence_threshold: vidPersonThr
+                },
+                stability: {
+                    window_size_n: vidWindowSize,
+                    violation_ratio_t: vidViolationRatio,
+                    min_window_for_violation: vidMinWindowForViolation
+                }
+            };
+
+            // блок для статусов по каждому файлу
+            const listDiv = document.createElement('div');
+            videoResultsDiv.appendChild(listDiv);
+
+            for (const file of files) {
+                const row = document.createElement('div');
+                row.id = 'file-status-' + file.name;
+                row.textContent = `${file.name}: подготовка...`;
+                listDiv.appendChild(row);
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('params', JSON.stringify(videoParams));
+
+                (async () => {
+                    try {
+                        // Шаг 1. Старт фонового анализа
+                        const startResp = await fetch('http://localhost:8000/api/video/start_analyze', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!startResp.ok) {
+                            const text = await startResp.text();
+                            row.textContent = `${file.name}: ошибка старта анализа (${startResp.status} ${text})`;
+                            return;
+                        }
+
+                        const startData = await startResp.json();
+                        const runId = startData.run_id;
+                        row.textContent = `${file.name}: задача поставлена (run ${runId}), статус: queued`;
+
+                        // Шаг 2. Периодически опрашиваем /api/video/status/{run_id}
+                        const pollIntervalMs = 3000;
+
+                        const intervalId = setInterval(async () => {
+                            try {
+                                const stResp = await fetch(`http://localhost:8000/api/video/status/${runId}`);
+                                if (!stResp.ok) {
+                                    row.textContent = `${file.name}: ошибка получения статуса(${stResp.status})`;
+                                    clearInterval(intervalId);
+                                    return;
+                                }
+
+                                const st = await stResp.json();
+
+                                if (st.status === 'processing') {
+                                    const progressTotal = st.frames_to_process != null
+                                        ? st.frames_to_process
+                                        : st.total_frames;
+                                    row.textContent =
+                                        `${file.name}: статус processing, ` +
+                                        `кадров обработано: ${st.processed_frames ?? 0}` +
+                                        (progressTotal != null ? ` / ${progressTotal}` : '');
+                                } else if (st.status === 'queued') {
+                                    row.textContent = `${file.name}: статус queued`;
+                                } else if (st.status === 'done') {
+                                    row.textContent =
+                                        `${file.name}: анализ завершён.` +
+                                        `длительность: ${st.duration_sec != null ? st.duration_sec.toFixed(1) + ' сек.' : '?'},` +
+                                        `FPS видео: ${st.video_fps != null ? st.video_fps.toFixed(2) : '?'},` +
+                                        `анализируемый FPS: ${st.target_fps != null ? st.target_fps.toFixed(2) : '?'},` +
+                                        `кадров: ${st.total_frames ?? '?'}, ` +
+                                        `проанализировано: ${st.processed_frames ?? '?'}`;
+                                    clearInterval(intervalId);
+
+                                    // === Запрашиваем детальный результат ===
+                                    try {
+                                        const respRes = await fetch(`http://localhost:8000/api/video/result/${runId}`);
+                                        if (!respRes.ok) {
+                                            console.warn('Ошибка получения результата для', file.name, respRes.status);
+                                            return;
+                                        }
+                                        const dataRes = await respRes.json();
+                                        const res = dataRes.result;
+
+                                        const block = document.createElement('div');
+                                        block.className = 'item';
+
+                                        const title = document.createElement('h3');
+                                        title.textContent = res.filename || `Видео run ${res.runid}`;
+                                        block.appendChild(title);
+
+                                        const info = document.createElement('div');
+                                        info.innerHTML =
+                                            '<b>Длительность:</b> ' + (res.durationstr || '?') + ' (' +
+                                            (res.durationsec !== undefined && res.durationsec !== null ? res.durationsec.toFixed(1) + ' сек.' : '?') + ')<br>' +
+                                            '<b>FPS видео:</b> ' + (res.videofps !== undefined && res.videofps !== null ? res.videofps.toFixed(2) : '?') + '<br>' +
+                                            '<b>Анализируемый FPS:</b> ' + (res.targetfps !== undefined && res.targetfps !== null ? res.targetfps.toFixed(2) : '?') + '<br>' +
+                                            '<b>Всего кадров:</b> ' + (res.totalframes !== undefined && res.totalframes !== null ? res.totalframes : '?') + '<br>' +
+                                            '<b>Проанализировано кадров:</b> ' + (res.processedframes !== undefined && res.processedframes !== null ? res.processedframes : '?');
+                                        block.appendChild(info);
+
+                                        const viols = res.stableviolationsbyperson || [];
+                                        const header = document.createElement('h4');
+                                        header.textContent = 'Устойчивые нарушения по людям (всего: ' + viols.length + ')';
+                                        block.appendChild(header);
+
+                                        if (viols.length === 0) {
+                                            const noViol = document.createElement('div');
+                                            noViol.textContent = 'Устойчивые нарушения не обнаружены.';
+                                            block.appendChild(noViol);
+                                        } else {
+                                            for (const v of viols) {
+                                                const vBlock = document.createElement('div');
+                                                vBlock.style.marginBottom = '15px';
+                                                vBlock.style.borderBottom = '1px solid #eee';
+                                                vBlock.style.paddingBottom = '10px';
+
+                                                const titleV = document.createElement('div');
+                                                titleV.textContent =
+                                                    'Track ' + v.trackid +
+                                                    ', кадр ' + v.frameindex +
+                                                    ', время ' + v.timestr +
+                                                    ', длина окна: ' + v.windowsize +
+                                                    ', кадров с нарушениями: ' + v.violationsinwindow +
+                                                    ' (доля: ' + v.violationratio.toFixed(2) + ')' +
+                                                    ', тип нарушения: ' + (v.violationtype || '') +
+                                                    ', последний статус: ' + (v.statusnote || '');
+                                                vBlock.appendChild(titleV);
+
+                                                if (v.frameimageurl) {
+                                                    const img = document.createElement('img');
+                                                    img.src = 'http://localhost:8000' + v.frameimageurl;
+                                                    img.style.maxWidth = '600px';
+                                                    img.style.display = 'block';
+                                                    img.style.marginTop = '5px';
+                                                    vBlock.appendChild(img);
+                                                }
+
+                                                block.appendChild(vBlock);
+                                            }
+                                        }
+
+                                        videoResultsDiv.appendChild(block);
+
+                                        // === Фоновая генерация и показ размеченного видео ===
+                                        try {
+                                            const overlayForm = new FormData();
+                                            overlayForm.append('file', file);
+                                            overlayForm.append('params', JSON.stringify(videoParams));
+
+                                            const overlayStartResp = await fetch('http://localhost:8000/api/video/start_analyze_with_overlay', {
+                                                method: 'POST',
+                                                body: overlayForm
+                                            });
+
+                                            if (!overlayStartResp.ok) {
+                                                const txt = await overlayStartResp.text();
+                                                console.warn('Ошибка запуска фоновой генерации размеченного видео для', file.name, txt);
+                                            } else {
+                                                const overlayStartData = await overlayStartResp.json();
+                                                const overlayRunId = overlayStartData.run_id;
+
+                                                const overlayIntervalId = setInterval(async () => {
+                                                    try {
+                                                        const overlayStatusResp = await fetch(`http://localhost:8000/api/video/status/${overlayRunId}`);
+                                                        if (!overlayStatusResp.ok) {
+                                                            clearInterval(overlayIntervalId);
+                                                            return;
+                                                        }
+
+                                                        const overlayStatus = await overlayStatusResp.json();
+                                                        if (overlayStatus.status === 'done') {
+                                                            clearInterval(overlayIntervalId);
+                                                            const overlayResResp = await fetch(`http://localhost:8000/api/video/result/${overlayRunId}`);
+                                                            if (!overlayResResp.ok) {
+                                                                return;
+                                                            }
+                                                            const overlayResData = await overlayResResp.json();
+                                                            const videoUrl = overlayResData?.result?.annotatedvideourl;
+
+                                                            if (videoUrl) {
+                                                                const vTitle = document.createElement('h4');
+                                                                vTitle.textContent = `Размеченное видео: ${file.name}`;
+                                                                videoPlayerContainer.appendChild(vTitle);
+
+                                                                const player = document.createElement('video');
+                                                                player.controls = true;
+                                                                player.preload = 'metadata';
+                                                                player.style.maxWidth = '800px';
+                                                                player.style.display = 'block';
+                                                                player.style.marginBottom = '12px';
+                                                                const fullVideoUrl = 'http://localhost:8000' + videoUrl;
+                                                                const source = document.createElement('source');
+                                                                source.src = fullVideoUrl;
+                                                                if (videoUrl.toLowerCase().endsWith('.webm')) {
+                                                                    source.type = 'video/webm';
+                                                                } else {
+                                                                    source.type = 'video/mp4';
+                                                                }
+                                                                player.appendChild(source);
+                                                                videoPlayerContainer.appendChild(player);
+                                                            }
+                                                        } else if (overlayStatus.status === 'error') {
+                                                            clearInterval(overlayIntervalId);
+                                                            console.warn('Ошибка фоновой генерации размеченного видео для', file.name, overlayStatus.error_message || '');
+                                                        }
+                                                    } catch (e) {
+                                                        clearInterval(overlayIntervalId);
+                                                        console.warn('Ошибка polling размеченного видео для', file.name, e);
+                                                    }
+                                                }, 3000);
+                                            }
+                                        } catch (e) {
+                                            console.warn('Ошибка запуска фоновой генерации размеченного видео для', file.name, e);
+                                        }
+                                    } catch (e) {
+                                        console.warn('Ошибка запроса результата для', file.name, e);
+                                    }
+                                } else if (st.status === 'error') {
+                                    row.textContent =
+                                        `${file.name}: ошибка анализа: ${st.error_message || ''}`;
+                                    clearInterval(intervalId);
+                                }
+                            } catch (e) {
+                                row.textContent = `${file.name}: ошибка статуса ${e}`;
+                                clearInterval(intervalId);
+                            }
+                        }, pollIntervalMs);
+                    } catch (err) {
+                        row.textContent = `${file.name}: ошибка запуска анализа ${err}`;
+                    }
+                })();
+            }
+
+            videoStatusDiv.textContent = 'Задачи на анализ видео отправлены. Всего файлов: ' + files.length;
+            videoStatusDiv.className = 'success';
+        });
+
+        // --- Блок "Чтение с камеры" ---
+
+        const camViewLiveBtn = document.getElementById('camViewLiveBtn');
+        const camViewListBtn = document.getElementById('camViewListBtn');
+        const camReportsBtn = document.getElementById('camReportsBtn');
+
+        const camLiveSection = document.getElementById('camLiveSection');
+        const camListSection = document.getElementById('camListSection');
+        const camReportsSection = document.getElementById('camReportsSection');
+
+        const camLiveSelect = document.getElementById('camLiveSelect');
+        const camLiveImage = document.getElementById('camLiveImage');
+        const camLiveStatus = document.getElementById('camLiveStatus');
+
+        const camListContainer = document.getElementById('camListContainer');
+
+        const camReportSelect = document.getElementById('camReportSelect');
+        const camReportFrom = document.getElementById('camReportFrom');
+        const camReportTo = document.getElementById('camReportTo');
+        const camReportLoadBtn = document.getElementById('camReportLoadBtn');
+        const camReportResults = document.getElementById('camReportResults');
+
+        // Переключение подблоков в "Чтение с камеры"
+        function setActiveCameraSubtool(subtool) {
+            camLiveSection.style.display = 'none';
+            camListSection.style.display = 'none';
+            camReportsSection.style.display = 'none';
+
+            if (subtool === 'live') {
+                camLiveSection.style.display = 'block';
+            } else if (subtool === 'list') {
+                camListSection.style.display = 'block';
+            } else if (subtool === 'reports') {
+                camReportsSection.style.display = 'block';
+            }
+        }
+
+        camViewLiveBtn?.addEventListener('click', () => setActiveCameraSubtool('live'));
+        camViewListBtn?.addEventListener('click', () => setActiveCameraSubtool('list'));
+        camReportsBtn?.addEventListener('click', () => setActiveCameraSubtool('reports'));
+
+        // По умолчанию показываем "Текущие кадры"
+        setActiveCameraSubtool('live');
+
+        // --- Загрузка списка камер (для всех подблоков) ---
+
+        async function loadCameraList() {
+            console.log('loadCameraList: start');
+            try {
+                const resp = await fetch('http://localhost:8000/api/cameras');
+                console.log('loadCameraList: resp status', resp.status);
+                if (!resp.ok) {
+                    camListContainer.textContent = 'Ошибка загрузки списка камер: ' + resp.status;
+                    camLiveStatus.textContent = 'Ошибка загрузки списка камер.';
+                    return;
+                }
+
+                const data = await resp.json();
+                const cameras = data.cameras || data;
+
+                // Очищаем select'ы
+                camLiveSelect.innerHTML = '';
+                camReportSelect.innerHTML = '';
+
+                // В select'ы добавляем только включённые камеры
+                const activeCameras = cameras.filter(cam => cam.enabled ?? cam.is_active ?? false);
+
+                activeCameras.forEach(cam => {
+                    const label = cam.name + (cam.location ? ` (${cam.location})` : '');
+                    const opt1 = document.createElement('option');
+                    opt1.value = cam.id;
+                    opt1.textContent = label;
+                    camLiveSelect.appendChild(opt1);
+
+                    const opt2 = document.createElement('option');
+                    opt2.value = cam.id;
+                    opt2.textContent = label;
+                    camReportSelect.appendChild(opt2);
+                });
+
+                // Таблица по всем камерам (как раньше)
+                if (!cameras.length) {
+                    camListContainer.textContent = 'Камеры не найдены. Проверьте файл cameras.yaml и синхронизацию с БД.';
+                    camLiveStatus.textContent = 'Камеры не найдены.';
+                    return;
+                }
+
+                const table = document.createElement('table');
+                table.style.borderCollapse = 'collapse';
+                table.style.width = '100%';
+                table.style.fontSize = '13px';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+            <tr>
+                <th style="border:1px solid #ccc; padding:4px;">ID (DB)</th>
+                <th style="border:1px solid #ccc; padding:4px;">ID (cameras.yaml)</th>
+                <th style="border:1px solid #ccc; padding:4px;">Название</th>
+                <th style="border:1px solid #ccc; padding:4px;">Локация</th>
+                <th style="border:1px solid #ccc; padding:4px;">Тип подключения</th>
+                <th style="border:1px solid #ccc; padding:4px;">Включена</th>
+                <th style="border:1px solid #ccc; padding:4px;">target_fps</th>
+                <th style="border:1px solid #ccc; padding:4px;">max_width</th>
+                <th style="border:1px solid #ccc; padding:4px;">stream.max_run_duration_sec</th>
+                <th style="border:1px solid #ccc; padding:4px;">Состояние обработки</th>
+            </tr>
+        `;
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+
+                cameras.forEach(cam => {
+                    const tr = document.createElement('tr');
+
+                    const enabled = cam.enabled ?? cam.is_active ?? false;
+                    const params = cam.camera_params || {};
+                    const vp = params.video_processing || {};
+                    const stream = params.stream || {};
+                    const isProcessing = cam.is_processing_now === true;
+
+                    function td(text) {
+                        const cell = document.createElement('td');
+                        cell.style.border = '1px solid #ccc';
+                        cell.style.padding = '4px';
+                        cell.textContent = text;
+                        return cell;
+                    }
+
+                    tr.appendChild(td(cam.id));
+                    tr.appendChild(td(cam.external_id || ''));
+                    tr.appendChild(td(cam.name || ''));
+                    tr.appendChild(td(cam.location || ''));
+                    tr.appendChild(td(cam.connection_type || ''));
+
+                    const tdEnabled = td(enabled ? 'Вкл' : 'Выкл');
+                    tdEnabled.style.color = enabled ? 'green' : 'red';
+                    tr.appendChild(tdEnabled);
+
+                    tr.appendChild(td(
+                        vp.target_fps != null
+                            ? vp.target_fps
+                            : (cam.target_fps != null ? cam.target_fps : '')
+                    ));
+                    tr.appendChild(td(vp.max_width != null ? vp.max_width : ''));
+                    tr.appendChild(td(
+                        stream.max_run_duration_sec != null ? stream.max_run_duration_sec : ''
+                    ));
+
+                    const tdState = document.createElement('td');
+                    tdState.style.border = '1px solid #ccc';
+                    tdState.style.padding = '4px';
+                    tdState.textContent = isProcessing ? 'Обрабатывается' : 'Не обрабатывается';
+                    tdState.style.color = isProcessing ? 'green' : '#555';
+                    tr.appendChild(tdState);
+
+                    tbody.appendChild(tr);
+                });
+
+                table.appendChild(tbody);
+                camListContainer.innerHTML = '';
+                camListContainer.appendChild(table);
+
+                // Если есть активные камеры — выбираем первую и запускаем предпросмотр
+                if (activeCameras.length) {
+                    camLiveSelect.selectedIndex = 0;
+                    startLivePreview();
+                } else {
+                    camLiveImage.style.display = 'none';
+                    camLiveStatus.textContent = 'Нет включённых камер (enabled=false).';
+                }
+            } catch (e) {
+                console.error('loadCameraList error:', e);
+                camListContainer.textContent = 'Ошибка загрузки списка камер: ' + e;
+                camLiveStatus.textContent = 'Ошибка загрузки списка камер.';
+            }
+        }
+
+        // Вызываем загрузку списка камер при показе вкладки "Чтение с камеры"
+        toolCameraBtn.addEventListener('click', () => {
+            setActiveTool('camera');
+            // Подгружаем список камер при первом входе (или каждый раз, если так хочется)
+            loadCameraList();
+        });
+
+        let camLiveIntervalId = null;
+
+        function startLivePreview() {
+            // если уже крутится — останавливаем
+            if (camLiveIntervalId !== null) {
+                clearInterval(camLiveIntervalId);
+                camLiveIntervalId = null;
+            }
+
+            const camId = camLiveSelect.value;
+            if (!camId) {
+                camLiveImage.style.display = 'none';
+                camLiveStatus.textContent = 'Камера не выбрана.';
+                return;
+            }
+
+            camLiveImage.style.display = 'block';
+            camLiveStatus.textContent = `Показ последних обработанных кадров с камеры id=${camId}`;
+
+            camLiveIntervalId = setInterval(() => {
+                // Т.к. файл перезаписывается воркером, достаточно обновлять URL с параметром ts
+                camLiveImage.src = `http://localhost:8000/last_frames/camera_${camId}_last.jpg?ts=${Date.now()}`;
+            }, 1000); // обновление раз в секунду
+        }
+
+        camReportLoadBtn?.addEventListener('click', async () => {
+            const camId = camReportSelect.value;
+            if (!camId) {
+                alert('Выберите камеру');
+                return;
+            }
+
+            const fromVal = camReportFrom.value; // "YYYY-MM-DDTHH:MM"
+            const toVal = camReportTo.value;
+            if (!fromVal || !toVal) {
+                alert('Укажите период (начало и конец)');
+                return;
+            }
+
+            const fromIso = new Date(fromVal).toISOString();
+            const toIso = new Date(toVal).toISOString();
+
+            camReportResults.innerHTML = 'Загрузка отчёта...';
+
+            try {
+                const url = new URL(`http://localhost:8000/api/cameras/${camId}/violations`);
+                url.searchParams.set('from', fromIso);
+                url.searchParams.set('to', toIso);
+
+                const resp = await fetch(url.toString());
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    camReportResults.textContent = `Ошибка загрузки отчёта: ${resp.status} ${txt}`;
+                    return;
+                }
+
+                const data = await resp.json();
+                const violations = data.violations || data;
+
+                if (!violations.length) {
+                    camReportResults.textContent = 'За выбранный период нарушения не обнаружены.';
+                    return;
+                }
+
+                // --- Строим таблицу отчёта ---
+                const table = document.createElement('table');
+                table.style.borderCollapse = 'collapse';
+                table.style.width = '100%';
+                table.style.fontSize = '13px';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+            <tr>
+                <th style="border:1px solid #ccc; padding:4px;">Дата и время</th>
+                <th style="border:1px solid #ccc; padding:4px;">Тип нарушения</th>
+                <th style="border:1px solid #ccc; padding:4px;">Человек (track)</th>
+                <th style="border:1px solid #ccc; padding:4px;">Кадр</th>
+                <th style="border:1px solid #ccc; padding:4px;">Момент в потоке</th>
+                <th style="border:1px solid #ccc; padding:4px;">Изображение</th>
+            </tr>
+        `;
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+
+                violations.forEach(v => {
+                    const tr = document.createElement('tr');
+
+                    // 1. Дата и время (created_at)
+                    const created = v.created_at ? new Date(v.created_at) : null;
+                    const createdStr = created
+                        ? created.toLocaleString('ru-RU')
+                        : (v.created_at || '');
+
+                    const tdDate = document.createElement('td');
+                    tdDate.style.border = '1px solid #ccc';
+                    tdDate.style.padding = '4px';
+                    tdDate.textContent = createdStr;
+                    tr.appendChild(tdDate);
+
+                    // 2. Тип нарушения (на русском, без "no_helmet")
+                    const tdType = document.createElement('td');
+                    tdType.style.border = '1px solid #ccc';
+                    tdType.style.padding = '4px';
+                    let typeRu = '';
+                    switch (v.violation_type) {
+                        case 'no_helmet':
+                            typeRu = 'Без каски';
+                            break;
+                        case 'no_vest':
+                            typeRu = 'Без жилета';
+                            break;
+                        case 'no_helmet_and_vest':
+                            typeRu = 'Без каски и жилета';
+                            break;
+                        default:
+                            typeRu = v.violation_type || 'Неизвестно';
+                    }
+                    tdType.textContent = typeRu;
+                    tr.appendChild(tdType);
+
+                    // 3. Track (человек)
+                    const tdTrack = document.createElement('td');
+                    tdTrack.style.border = '1px solid #ccc';
+                    tdTrack.style.padding = '4px';
+                    tdTrack.textContent = v.track_index != null ? String(v.track_index) : '-';
+                    tr.appendChild(tdTrack);
+
+                    // 4. Номер кадра
+                    const tdFrame = document.createElement('td');
+                    tdFrame.style.border = '1px solid #ccc';
+                    tdFrame.style.padding = '4px';
+                    tdFrame.textContent = v.frame_index != null ? String(v.frame_index) : '-';
+                    tr.appendChild(tdFrame);
+
+                    // 5. Момент в потоке (секунды)
+                    const tdTime = document.createElement('td');
+                    tdTime.style.border = '1px solid #ccc';
+                    tdTime.style.padding = '4px';
+                    tdTime.textContent =
+                        v.time_sec != null ? v.time_sec.toFixed(1) + ' сек.' : '';
+                    tr.appendChild(tdTime);
+
+                    // 6. Изображение (превью + возможность открыть в полном размере)
+                    const tdImg = document.createElement('td');
+                    tdImg.style.border = '1px solid #ccc';
+                    tdImg.style.padding = '4px';
+                    tdImg.style.textAlign = 'center';
+
+                    if (v.frame_image_url) {
+                        const fullUrl = 'http://localhost:8000' + v.frame_image_url;
+
+                        // Ссылка "Открыть" в полном размере
+                        const link = document.createElement('a');
+                        link.href = fullUrl;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+
+                        const img = document.createElement('img');
+                        img.src = fullUrl;
+                        img.style.maxWidth = '150px';
+                        img.style.display = 'block';
+                        img.style.margin = '0 auto 4px auto';
+
+                        link.appendChild(img);
+
+                        //const linkText = document.createElement('span');
+                        //linkText.textContent = 'Открыть в полном размере';
+                        //linkText.style.fontSize = '11px';
+                        //linkText.style.textDecoration = 'underline';
+                        //link.appendChild(linkText);
+
+                        tdImg.appendChild(link);
+                    } else {
+                        tdImg.textContent = '—';
+                    }
+
+                    tr.appendChild(tdImg);
+
+                    tbody.appendChild(tr);
+                });
+
+                table.appendChild(tbody);
+                camReportResults.innerHTML = '';
+                camReportResults.appendChild(table);
+
+            } catch (e) {
+                camReportResults.textContent = 'Ошибка загрузки отчёта: ' + e;
+            }
+        });
+
+        camLiveSelect?.addEventListener('change', startLivePreview);
+    </script>
+
+</body>
+
+</html>
